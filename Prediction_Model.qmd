@@ -1,0 +1,657 @@
+---
+title: "Prediction Model In Class"
+author: "Md Boshirul Azad"
+date: "Fall 2025"
+format:
+  html: 
+    theme: cosmo
+    fontsize: .85em
+    linestretch: 1.5
+    toc: true
+    toc-expand: 2
+    toc-location: body
+    toc-title: Table of Contents
+execute:
+  echo: false
+  warning: false
+---
+
+```{r Themes}
+# To change look and feel, you can simply adjust themes. 
+# Here is a reference. Simply replace 'simples' with one of these names:
+# https://quarto.org/docs/output-formats/html-themes.html
+
+```
+
+# I. Executive Summary
+
+## Define Focus of Prediction \
+
+\ What are you trying to predict?\
+Ans: We are trying to predict house sales price.
+
+\ What type of prediction model is it?\
+Ans: It is linear regression prediction model.
+
+## Communicate Findings \
+
+\ What were your findings from your prediction model?\
+
+Findings:
+
+- Overall the model performs well.
+
+- Predictions are quite close to actual price.
+
+- Accuracy drops when it comes to higher price range.
+
+- Most points follow the diagonal line.
+
+- Neighborhood, overall quality, and Ground living area are the most influential predictors.
+
+\ How do these findings tie back to question or problem at hand?\
+
+Findings:
+
+- This model effectively predicts house prices.
+
+- The model shows a comprehensible data trend even though the accuracy drops at higher price range.
+
+## Take Action 
+
+\Based on the analysis, what do actions do you recommend\
+
+Actions:(Good models)
+
+- Add more variables with higher prices to get more accurate result on higher price range.
+
+- Increase the sample size to increase the overall accuracy of the model.
+
+- Try models with different predictors.
+
+Actions:(Bad model, lm_t5)
+
+- Use more relevant predictors to make model.
+
+- Avoid too simple variables.
+
+
+# II. Prediction Model
+
+\ Summarization of the model\
+
+- The outcome variable is sale price. 
+
+-The models consists of Neighborhood, Overall quality, Ground living area, Garage cars, lot area. 
+
+- The good models includes Neighborhood, Overall quality, and Ground living area.
+
+- The bad model has Garage cars and lot area.
+
+Overall, the models are accurate and can predict house prices with the exception of high price range houses.
+
+## Collect Data \
+
+\ We are using the Ames Housing data.
+
+### Clear Environment
+
+```{r Clear Environment}
+#Clear the environment (be careful with this)
+rm(list = ls())
+
+```
+
+### Load Libraries and Custom Functions
+
+```{r Load Libraries}
+
+
+# Load Libraries
+library(ggplot2) # This library is useful for data visualization
+library(scales) #Formats output data
+library(janitor) #Formats output data
+library(tidyverse)
+library(forcats)
+library(rlang)
+library(patchwork)
+library(gt)
+library(glmnet)
+library(tidymodels)  # modern unified framework (includes rsample, parsnip, yardstick, etc.)
+library(broom)       # tidy model summaries
+library(performance) # model diagnostics
+library(see)         # visualization for performance package
+library(vip)         # variable importance plots
+library(MASS)
+library(car)        # for VIF
+library(caret)      # for preprocessing and modeling
+library(dplyr) # This library is useful for data manipulation
+library(conflicted)
+
+conflict_prefer("select", "dplyr")
+# tidymodels: the best unified ecosystem for modern R modeling.
+# rsample: train/test splitting.
+# yardstick: performance metrics.
+# performance + see: model diagnostics and visualization.
+# vip: interpretable variable importance plots.
+# broom: tidy coefficient summaries.
+
+#source("CS217_Functions.R")
+
+```
+
+### Load Data
+
+```{r Load Data}
+# Load data set 
+
+# KEY: Make sure the file is in your default workdirectory of your project
+#sales_data <- read.csv("sales_transactions.csv", header = T) 
+library(AmesHousing)
+ames_data <- make_ames()
+# glimpse(ames)
+
+```
+
+## Clean Data \
+
+### Convert Data to Useful Definitions
+
+```{r}
+
+## Clean and organize the data better
+
+
+
+```
+
+### Modify Data - Create Calculated Fields
+
+We will build two different models with the Ames housing data set. The first model will use regression to predict the house 
+price - a continuous value. The 2nd
+
+
+```{r}
+# 1) GET THE SIGNIFICANT FACTOROS
+
+set.seed(123)
+split_reg <- initial_split(ames_data, prop = 0.7)
+train_data <- training(split_reg)
+test_data  <- testing(split_reg)
+
+
+```
+## MAKE THE MODEL TO GET THE SIGN FACTORS
+```{r}
+predictor_cols <- ames_data %>%
+  select(-Sale_Price) %>% #Dont inlclude Sale Price, it is the outcome variable
+  select(where(is.numeric)) %>% #Select all numeric predictor variables
+  names() #pull just the column names
+```
+## CHECK THE WHOLE DATA
+```{r}
+lm_all <- lm(Sale_Price~ ., data = train_data)
+
+# summary(lm_all)
+```
+
+
+## Model 1: Linear Regression Data
+
+
+```{r Calcuate Fields}
+
+# Linear regression target
+ames_reg <- ames_data %>%
+  dplyr::select(Sale_Price,
+                Gr_Liv_Area, 
+                Year_Built, 
+                Garage_Cars, 
+                Full_Bath, 
+                Neighborhood,
+                Lot_Area,
+                MS_SubClass,
+                Street,
+                Land_Contour,
+                Land_Slope,
+                Condition_1,
+                Condition_2,
+                Overall_Qual,
+                Overall_Cond,
+                Exterior_1st,
+                Mas_Vnr_Area,
+                Mas_Vnr_Type,
+                Foundation,
+                Bsmt_Qual,
+                Bsmt_Exposure,
+                BsmtFin_Type_2,
+                Bsmt_Unf_SF)
+
+
+```
+
+Handle Missing Values
+
+```{r}
+ames_reg$age <- year(today()) - ames_reg$Year_Built
+
+ames_reg$Year_Built <- NULL 
+
+ames_reg$age
+```
+
+
+```{r}
+predictor_cols <- ames_reg %>%
+  select(-Sale_Price) %>% #Dont inlclude Sale Price, it is the outcome variable
+  select(where(is.numeric)) %>% #Select all numeric predictor variables
+  names() #pull just the column names
+```
+
+### Normalize Predictor Variables 
+
+This is done so that large numeric values (like lot area) doesn't overshadow the impact of small number (like Full Bath). This puts all numerical values on a standard scale. 
+
+```{r}
+
+
+predictor_cols <- ames_reg %>%
+  select(-Sale_Price) %>% #Dont inlclude Sale Price, it is the outcome variable
+  select(where(is.numeric)) %>% #Select all numeric predictor variables
+  names() #pull just the column names
+
+# Put in a new data set that can be matched back to the original data set for interpretation
+
+ames_reg_clean <- ames_reg %>%
+  mutate(across(all_of(predictor_cols), ~ as.numeric(scale(.x))))
+
+```
+
+
+### Create the Training & Test Data Sets
+
+Training data sets are to develop a base model. This is typically 60-80% of the data set. The reason is to have large enough data set to build a quality model but without "overfitting". 
+
+Test data set is used to prove out the quality of the model. This is typically 40-20% of the original data set.
+
+Overfitting is when you over engineer your model to the data set only and not for general purpose usage across data sets.
+
+```{r}
+
+# 1) TRAIN/SPLIT THE DATA
+
+set.seed(123)
+split_reg <- initial_split(ames_reg_clean, prop = 0.7)
+train_data <- training(split_reg)
+test_data  <- testing(split_reg)
+
+
+```
+###Check for the Significant factors
+
+```{r}
+lm_all_clean <- lm(Sale_Price~ ., data = train_data)
+
+# summary(lm_all_clean)
+```
+
+
+### Test some Models to find the significant ones
+
+```{r}
+
+# Define a linear regression model
+
+# Dependent - Y -  Sales_Price - Outcome variable that you are trying to predict
+# Independent Variables - f(x) - Input variables, coefficients, predictors, etc. 
+
+
+
+lm_2 <- lm(Sale_Price ~ Full_Bath, data = train_data) # Low R score
+
+# summary(lm_2)
+
+lm_3 <- lm(Sale_Price ~ Gr_Liv_Area, data = train_data) # Low R score
+
+# summary(lm_3)
+
+lm_4 <- lm(Sale_Price ~ Garage_Cars, data = train_data) # Low R score
+
+# summary(lm_4)
+
+
+lm_5 <- lm(Sale_Price ~ Lot_Area, data = train_data) # Low R score
+
+# summary(lm_5)
+
+lm_6 <- lm(Sale_Price ~ Neighborhood, data = train_data) # R = 0.5677
+
+# summary(lm_6)
+
+lm_7 <- lm(Sale_Price ~ age, data = train_data) # Low R score
+
+# summary(lm_7)
+
+lm_8 <- lm(Sale_Price ~ Street, data = train_data) # Low R score
+
+# summary(lm_8)
+
+lm_9 <- lm(Sale_Price ~ Land_Contour, data = train_data) # Low R score
+
+# summary(lm_9)
+
+lm_10 <- lm(Sale_Price ~ Land_Slope, data = train_data) # Low R score
+
+# summary(lm_10)
+
+lm_11 <- lm(Sale_Price ~ Condition_1, data = train_data) # Low R score
+
+# summary(lm_11)
+
+lm_12 <- lm(Sale_Price ~ Condition_2, data = train_data) # Low R score
+
+# summary(lm_12)
+
+lm_13 <- lm(Sale_Price ~ Overall_Qual, data = train_data) # R = 0.708
+
+# summary(lm_13)
+
+lm_14 <- lm(Sale_Price ~ Overall_Cond, data = train_data) # Low R score
+
+# summary(lm_14)
+
+# lm_15 <- lm(Sale_Price ~ Year_Built, data = train_data) # Low R score
+# 
+# summary(lm_15)
+
+# lm_16 <- lm(Sale_Price ~ Roof_Matl, data = train_data) # Low R score
+# 
+# summary(lm_16)
+
+lm_16 <- lm(Sale_Price ~ Exterior_1st, data = train_data) # Low R score
+
+# summary(lm_16)
+
+lm_17 <- lm(Sale_Price ~ Mas_Vnr_Type, data = train_data) # Low R score
+
+# summary(lm_17)
+
+lm_18 <- lm(Sale_Price ~ Mas_Vnr_Area, data = train_data) # Low R score
+
+# summary(lm_18)
+
+lm_18 <- lm(Sale_Price ~ Foundation, data = train_data) # Low R score
+
+# summary(lm_18)
+
+lm_19 <- lm(Sale_Price ~ Bsmt_Qual, data = train_data) # R = 0.5283
+
+# summary(lm_19)
+
+lm_20 <- lm(Sale_Price ~ Bsmt_Exposure, data = train_data) # Low R score
+
+# summary(lm_20)
+
+lm_21 <- lm(Sale_Price ~ BsmtFin_Type_2, data = train_data) # Low R score
+
+# summary(lm_21)
+
+lm_22 <- lm(Sale_Price ~ Bsmt_Unf_SF, data = train_data) # Low R score
+
+# summary(lm_22)
+
+
+lm_togather <- lm(Sale_Price ~ Neighborhood + Overall_Qual + Bsmt_Qual, data = train_data)
+
+# summary(lm_togather)
+
+lm_t1 <- lm(Sale_Price ~ Neighborhood + Overall_Qual, data = train_data)
+
+# summary(lm_t1)
+
+lm_t2 <- lm(Sale_Price ~ Neighborhood + Bsmt_Qual, data = train_data)
+
+# summary(lm_t2)
+
+lm_t3 <- lm(Sale_Price ~ Overall_Qual + Bsmt_Qual, data = train_data)
+
+# summary(lm_t3)
+
+lm_t4 <- lm(Sale_Price ~ Overall_Qual + Gr_Liv_Area, data = train_data)
+
+# summary(lm_t4)
+
+
+lm_t5 <- lm(Sale_Price ~ Lot_Area + Garage_Cars, data = train_data)
+
+# summary(lm_t5)
+
+
+```
+
+### Build and Evaluate 3 Distinct Models
+
+```{r}
+
+lm_t1 <- lm(Sale_Price ~ Neighborhood + Overall_Qual, data = train_data)
+
+summary(lm_t1)
+
+lm_t4 <- lm(Sale_Price ~ Overall_Qual + Gr_Liv_Area, data = train_data)
+
+summary(lm_t4)
+
+
+lm_t5 <- lm(Sale_Price ~ Lot_Area + Garage_Cars, data = train_data)
+
+summary(lm_t5)
+```
+
+
+### Make a prediction and evaluate model quality
+
+The prediction uses the fitted model (meaning a model derived from the training data set) and makes a prediction from the Test data set.
+
+```{r}
+
+# Predict on test data (Neighborhood and overall quality)
+
+predictions <- predict(lm_t1, test_data) 
+
+# Add predicted values to the test data set
+test_data$Predicted_Sale_Price <- predictions
+
+# Show the difference in values
+test_data$Predicted_vs_Actual <- round(test_data$Sale_Price - test_data$Predicted_Sale_Price,2)
+
+# Evaluate metrics
+
+metrics <- metrics(test_data, truth = Sale_Price, estimate = Predicted_Sale_Price)
+
+metrics$.estimate <- round(metrics$.estimate,2)
+
+test_data %>%
+ggplot(aes(x = Sale_Price, y = Predicted_Sale_Price)) +
+  geom_point(alpha = 0.6) + #Size of the points
+  geom_abline(slope = 1, intercept = 0, color = "red") + #line to show slope
+  labs(
+    title = "Predicted vs Actual Sale Price",
+    x = "Actual Sale Price",
+    y = "Predicted Sale Price"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+```{r}
+# Predict on test data (Overall_Qual + Gr_Liv_Area)
+
+predictions <- predict(lm_t4, test_data) 
+
+# Add predicted values to the test data set
+test_data$Predicted_Sale_Price <- predictions
+
+# Show the difference in values
+test_data$Predicted_vs_Actual <- round(test_data$Sale_Price - test_data$Predicted_Sale_Price,2)
+
+# Evaluate metrics
+
+metrics <- metrics(test_data, truth = Sale_Price, estimate = Predicted_Sale_Price)
+
+metrics$.estimate <- round(metrics$.estimate,2)
+
+test_data %>%
+ggplot(aes(x = Sale_Price, y = Predicted_Sale_Price)) +
+  geom_point(alpha = 0.6) + #Size of the points
+  geom_abline(slope = 1, intercept = 0, color = "red") + #line to show slope
+  labs(
+    title = "Predicted vs Actual Sale Price",
+    x = "Actual Sale Price",
+    y = "Predicted Sale Price"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+# Predict on test data (Lot_Area + Garage_Cars)
+
+predictions <- predict(lm_t5, test_data) 
+
+# Add predicted values to the test data set
+test_data$Predicted_Sale_Price <- predictions
+
+# Show the difference in values
+test_data$Predicted_vs_Actual <- round(test_data$Sale_Price - test_data$Predicted_Sale_Price,2)
+
+# Evaluate metrics
+
+metrics <- metrics(test_data, truth = Sale_Price, estimate = Predicted_Sale_Price)
+
+metrics$.estimate <- round(metrics$.estimate,2)
+
+test_data %>%
+ggplot(aes(x = Sale_Price, y = Predicted_Sale_Price)) +
+  geom_point(alpha = 0.6) + #Size of the points
+  geom_abline(slope = 1, intercept = 0, color = "red") + #line to show slope
+  labs(
+    title = "Predicted vs Actual Sale Price",
+    x = "Actual Sale Price",
+    y = "Predicted Sale Price"
+  ) +
+  theme_minimal()
+```
+
+### Evaluate the Model
+##lm_t1 = Neighborhood and Overall quality
+##lm_t2 = Overall quality and Ground living area
+##lm_t3 = Lot area and Garage car
+```{r}
+
+performance(lm_t1)
+performance(lm_t4)
+performance(lm_t5)
+
+#tidy(lm_fit)
+
+#parameters::model_parameters(lm_1)
+
+performance::check_model(lm_t1)
+performance::check_model(lm_t4)
+performance::check_model(lm_t5)
+
+
+```
+
+Here is the checklist to evaluate a model from the "check_model()" method of the Performance library.
+
+##Findings(Neighborhood and Overall quality):
+
+
+-   **Posterior Predictive Check** - The prediction values align with the observed values for the most part but on the top there are some extreme values.
+
+
+-   **Linearity** - Residuals are scatter randomly. Line is flat and horizontal with a bit of exception at higher value. There is no systematic pattern.
+
+
+-   **Homogeneity of Variance (Homoscedacity)** - The spread of residuals is not consistent across fitted values. As is goes more extreme the residuals are increased slightly on higher fitted values.
+
+
+-   **Influential Observations** - Most of the points are in the contour execpt one point at 463.
+
+
+-   **Collinearity** - There is no strong collinearity. VIF is less than 5 which is best.
+
+
+-   **Normality of Residuals** - The residuals are not normally distributed. Points are deviated from reference line.
+
+
+##Findings(Overall quality and Ground living area):
+
+
+-   **Posterior Predictive Check** - The prediction values align with the observed values for the most part but on the top there are some extreme values.
+
+
+-   **Linearity** - Residuals are scatter randomly. Line is flat and horizontal for most part and is slightly downward at high value.
+
+
+-   **Homogeneity of Variance (Homoscedacity)** - The spread of residuals are consistent across fitted values and consistently increases as in approaches  to higher value.
+
+
+-   **Influential Observations** - Most of the points are in the contour expect some extreme values.
+
+
+-   **Collinearity** -  VIF 1.5 for both indicating low collinearity and no significant collinearity among predictors.
+
+
+-   **Normality of Residuals** - The residuals are not normally distributed. Points are deviated from reference line in the beginning and at the end.
+
+
+##Findings(Lot area and Garage car):
+
+
+-   **Posterior Predictive Check** - The prediction values doesn't align with the observed values at around 0-300k.
+
+
+-   **Linearity** - Residuals are scatter randomly. Line doesn't align with the horizontal line.
+
+
+-   **Homogeneity of Variance (Homoscedacity)** - The spread of residuals is not consistent across fitted values. As is goes more extreme the residuals line decreases and increases like funnel shape.
+
+
+-   **Influential Observations** - There are multiple points that influences the contour and the most extreme is 798.
+
+
+-   **Collinearity** - VIF is 1 for both indicating there are no strong collinearity among the predictors.
+
+
+-   **Normality of Residuals** - The residuals are not normally distributed. Points are deviated from reference line at both tails.
+
+
+### Check Variable Importance
+
+Variable importance assesses which predictor variables that have the strongest predictive value to the outcome. In this case, we can make the following observations:
+
+-   Gross Living Area was the number one predictor with neighborhood, Ground living area with overall quality, and Garage car with lot area.
+```{r}
+vip::vip(lm_all_clean, num_features = 20)
+```
+
+```{r}
+vip::vip(lm_t1, num_features = 20)
+```
+
+
+
+```{r}
+
+vip::vip(lm_t4, num_features = 20)
+
+```
+```{r}
+vip::vip(lm_t5, num_features = 20)
+
+```
+
